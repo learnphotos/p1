@@ -1,0 +1,22 @@
+name: DownPhotos
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: GetPics
+        run: wget --adjust-extension --local-encoding=UTF-8 --no-parent -k --retry-on-http-error=429 --wait=1 --random-wait -i input.txt
+
+      - name: Download
+        if: always()
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: GetStudying
+          file_pattern: '*'
