@@ -12,7 +12,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: GetPics
-        run: wget --adjust-extension --local-encoding=UTF-8 --no-parent -k --retry-on-http-error=429 --wait=1 --random-wait -i input.txt
+        run: wget --adjust-extension --local-encoding=UTF-8 --no-parent -k --retry-on-http-error=429 -i input.txt
 
       - name: Download
         if: always()
