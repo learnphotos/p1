@@ -1,0 +1,67 @@
+name: Linkify
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Generate file list
+        shell: bash
+        env:
+          DIRECTORY: "."
+          OUTPUT_FILE: "file-links.txt"
+          BRANCH: "main"
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          from urllib.parse import quote
+          import os
+
+          directory = Path(os.environ["DIRECTORY"])
+          output_file = Path(os.environ["OUTPUT_FILE"])
+          repo = os.environ["GITHUB_REPOSITORY"]
+          branch = os.environ["BRANCH"]
+
+          base_url = f"https://raw.githubusercontent.com/{repo}/refs/heads/{branch}"
+
+          excluded_extensions = {".txt", ".yml"}
+          cwd = Path.cwd().resolve()
+
+          links = []
+
+          for file_path in sorted(directory.rglob("*")):
+              if not file_path.is_file():
+                  continue
+
+              resolved = file_path.resolve()
+
+              if ".git" in resolved.parts:
+                  continue
+
+              if file_path.suffix.lower() in excluded_extensions:
+                  continue
+
+              rel_path = resolved.relative_to(cwd).as_posix()
+              encoded_path = quote(rel_path, safe="/")
+
+              links.append(f"{base_url}/{encoded_path}")
+
+          output_file.write_text("\n".join(links) + ("\n" if links else ""), encoding="utf-8")
+
+          print(f"Wrote {len(links)} links to {output_file}")
+          PY
+
+      - name: Download
+        if: always()
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: Create links to files
+          file_pattern: '*'
