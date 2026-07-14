@@ -202,5 +202,5 @@ jobs:
         if: always()
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: Shrinker
+          commit_message: Shrunken!
           file_pattern: '*'
