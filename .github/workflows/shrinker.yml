@@ -1,4 +1,4 @@
-name: nameofwokr
+name: Shrinker
 
 on:
   workflow_dispatch:
