@@ -11,9 +11,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: DelImages
-        run: rm *.jpeg *.jpg *.png
-
       - name: GetPics
         # run: wget --adjust-extension --local-encoding=UTF-8 --no-parent -k --retry-on-http-error=429 -i input.txt
         run: |
