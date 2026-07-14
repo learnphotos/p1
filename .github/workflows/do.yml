@@ -122,7 +122,6 @@ jobs:
             rename_padded "$domain"
           done
 
-
       - name: Download
         if: always()
         uses: stefanzweifel/git-auto-commit-action@v4

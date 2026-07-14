@@ -1,0 +1,206 @@
+name: nameofwokr
+
+on:
+  workflow_dispatch:
+
+env:
+  # Change this to the directory you want to scan.
+  # Use "." for whole repository.
+  IMAGE_DIR: "."
+
+  # Compress only images larger than 1 MiB.
+  MIN_BYTES: "1048576"
+
+  # Target max size: 400 KiB.
+  TARGET_BYTES: "409600"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install image compression dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow
+
+      - name: Compress images larger than 1MB
+        run: |
+          python <<'PY'
+          import os
+          import shutil
+          import tempfile
+          from pathlib import Path
+          from PIL import Image, ImageOps
+
+          Image.MAX_IMAGE_PIXELS = None
+
+          IMAGE_DIR = Path(os.environ.get("IMAGE_DIR", "images"))
+          MIN_BYTES = int(os.environ.get("MIN_BYTES", 1048576))
+          TARGET_BYTES = int(os.environ.get("TARGET_BYTES", 409600))
+
+          IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+          def size(path):
+              return path.stat().st_size
+
+          def get_format(path):
+              ext = path.suffix.lower()
+              if ext in [".jpg", ".jpeg"]:
+                  return "JPEG"
+              if ext == ".png":
+                  return "PNG"
+              if ext == ".webp":
+                  return "WEBP"
+              return None
+
+          def save_image(img, output_path, fmt, quality):
+              if fmt == "JPEG":
+                  img = img.convert("RGB")
+                  img.save(
+                      output_path,
+                      "JPEG",
+                      quality=quality,
+                      optimize=True,
+                      progressive=True
+                  )
+
+              elif fmt == "WEBP":
+                  if "A" in img.getbands():
+                      img = img.convert("RGBA")
+                  else:
+                      img = img.convert("RGB")
+
+                  img.save(
+                      output_path,
+                      "WEBP",
+                      quality=quality,
+                      method=6
+                  )
+
+              elif fmt == "PNG":
+                  colors = quality
+
+                  if "A" in img.getbands():
+                      img = img.convert("RGBA").quantize(
+                          colors=colors,
+                          method=Image.Quantize.FASTOCTREE
+                      )
+                  else:
+                      img = img.convert("RGB").quantize(
+                          colors=colors,
+                          method=Image.Quantize.MEDIANCUT
+                      )
+
+                  img.save(
+                      output_path,
+                      "PNG",
+                      optimize=True,
+                      compress_level=9
+                  )
+
+          def compress(path):
+              original_size = size(path)
+
+              if original_size <= MIN_BYTES:
+                  return False
+
+              fmt = get_format(path)
+              if fmt is None:
+                  return False
+
+              print(f"Compressing: {path}")
+              print(f"Original size: {original_size / 1024:.2f} KB")
+
+              try:
+                  with Image.open(path) as opened:
+                      img = ImageOps.exif_transpose(opened)
+                      img.load()
+              except Exception as exc:
+                  print(f"Skipping {path}: {exc}")
+                  return False
+
+              if fmt in {"JPEG", "WEBP"}:
+                  quality_values = [85, 80, 75, 70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15, 10]
+              else:
+                  quality_values = [256, 192, 160, 128, 96, 64, 48, 32, 24, 16, 8]
+
+              best_file = None
+              best_size = original_size
+
+              scale = 1.0
+
+              # Try lower quality first, then progressively resize if needed.
+              for _ in range(50):
+                  width = max(1, int(img.width * scale))
+                  height = max(1, int(img.height * scale))
+
+                  if scale == 1.0:
+                      working = img.copy()
+                  else:
+                      working = img.resize((width, height), Image.Resampling.LANCZOS)
+
+                  for quality in quality_values:
+                      fd, temp_name = tempfile.mkstemp(suffix=path.suffix)
+                      os.close(fd)
+                      temp_path = Path(temp_name)
+
+                      try:
+                          save_image(working, temp_path, fmt, quality)
+                          candidate_size = size(temp_path)
+
+                          if candidate_size < best_size:
+                              if best_file and best_file.exists():
+                                  best_file.unlink()
+                              best_file = temp_path
+                              best_size = candidate_size
+                          else:
+                              temp_path.unlink()
+
+                          if candidate_size <= TARGET_BYTES:
+                              shutil.move(str(temp_path), str(path))
+
+                              if best_file and best_file.exists() and best_file != temp_path:
+                                  best_file.unlink()
+
+                              print(f"Compressed to: {candidate_size / 1024:.2f} KB")
+                              return True
+
+                      except Exception as exc:
+                          print(f"Failed candidate for {path}: {exc}")
+                          if temp_path.exists():
+                              temp_path.unlink()
+
+                  scale *= 0.85
+
+              # If it could not hit 400KB, keep the smallest version produced.
+              if best_file and best_file.exists():
+                  shutil.move(str(best_file), str(path))
+                  print(f"Best effort size: {best_size / 1024:.2f} KB")
+                  return True
+
+              print(f"Could not compress: {path}")
+              return False
+
+          if not IMAGE_DIR.exists():
+              print(f"Directory does not exist: {IMAGE_DIR}")
+              raise SystemExit(0)
+
+          changed = 0
+
+          for image in IMAGE_DIR.rglob("*"):
+              if image.is_file() and image.suffix.lower() in IMAGE_EXTENSIONS:
+                  if compress(image):
+                      changed += 1
+
+          print(f"Updated {changed} image file(s).")
+          PY
+
+      - name: Download
+        if: always()
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: Shrinker
+          file_pattern: '*'
