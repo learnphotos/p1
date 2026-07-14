@@ -11,8 +11,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: DelImages
+        run: rm *.jpeg *.jpg *.png
+
       - name: GetPics
-        run: wget --adjust-extension --local-encoding=UTF-8 --no-parent -k --retry-on-http-error=429 -i input.txt
+        # run: wget --adjust-extension --local-encoding=UTF-8 --no-parent -k --retry-on-http-error=429 -i input.txt
+        run: |
+          while IFS= read -r url || [ -n "$url" ]; do
+            url=${url%$'\r'}
+
+            [[ -z "$url" || "$url" =~ ^[[:space:]]*# ]] && continue
+
+            if [[ "$url" != http://* && "$url" != https://* ]]; then
+              full_url="https://$url"
+              domain="${url%%/*}"
+            else
+              full_url="$url"
+              domain="${url#*://}"
+              domain="${domain%%/*}"
+            fi
+
+            mkdir -p "$domain"
+
+            wget \
+              --adjust-extension \
+              --local-encoding=UTF-8 \
+              --no-parent \
+              -k \
+              --retry-on-http-error=429 \
+              -P "$domain" \
+              "$full_url"
+
+          done < input.txt
 
       - name: Download
         if: always()
