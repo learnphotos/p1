@@ -1,7 +1,6 @@
 name: DownPhotos
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:
